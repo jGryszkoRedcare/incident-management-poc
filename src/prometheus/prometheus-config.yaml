@@ -1,0 +1,22 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+global:
+  # Align Prometheus scrape interval with the OTel SDKs' export interval for consistency (see OTEL_METRIC_EXPORT_INTERVAL)
+  scrape_interval: 60s
+
+otlp:
+  keep_identifying_resource_attributes: true
+  promote_resource_attributes:
+    - service.instance.id
+    - service.name
+    - service.namespace
+    - service.version
+    - cloud.availability_zone
+    - cloud.region
+    - container.name
+    - deployment.environment.name
+
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
