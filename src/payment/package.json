@@ -9,7 +9,7 @@
   "author": "Jonathan Lui",
   "license": "ISC",
   "dependencies": {
-    "@grpc/grpc-js": "1.12.6",
+    "@grpc/grpc-js": "1.13.4",
     "@grpc/proto-loader": "0.7.15",
     "@openfeature/flagd-provider": "0.13.3",
     "@openfeature/server-sdk": "1.18.0",
