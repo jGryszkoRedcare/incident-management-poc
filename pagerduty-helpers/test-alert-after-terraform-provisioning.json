@@ -1,0 +1,12 @@
+{
+  "routing_key": "integration_key",
+  "event_action": "trigger",
+  "payload": {
+    "summary": "Cart service down",
+    "severity": "critical",
+    "source": "cart-service",
+    "custom_details": {
+      "service_tier": "tier1"
+    }
+  }
+}

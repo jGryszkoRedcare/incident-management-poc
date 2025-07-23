@@ -15,6 +15,47 @@ networks:
 
 services:
   # ******************
+  # Test Runner
+  # ******************
+  test-runner:
+    build:
+      context: ./docker-build/test-runner
+    container_name: test-runner
+    working_dir: /workspace
+    command: ["sleep", "infinity"]           # stays idle
+    environment:
+      - ROUTER=${ROUTER}                     # passed at compose‑up time
+      - PATH_TO_TESTS=/workspace/tests/${ROUTER}
+      - API_TOKEN=${API_TOKEN}
+    volumes:
+      - ./tests:/workspace/tests:ro
+      - ./src/flagd:/etc/flagd
+      
+    depends_on:
+      grafana:
+        condition: service_started
+      prometheus:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  response-automation:
+    build:
+      context: ./docker-build/response-automation
+    container_name: response-automation
+    environment:
+      - PROMETHEUS_URL=http://prometheus:9090
+      - OTEL_SERVICE_NAME=response-automation
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # default, explicit is nice
+      - OTEL_METRIC_EXPORT_INTERVAL=1000            # 1 s scrape cadence like other services
+    ports:
+      - "5000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # allow container control
+    restart: unless-stopped
+
+  # ******************
   # Core Demo Services
   # ******************
   # Accounting service
@@ -820,7 +861,7 @@ services:
     ports:
       - "${PROMETHEUS_PORT}:${PROMETHEUS_PORT}"
     logging: *logging
-
+  
   # OpenSearch
   opensearch:
     image: ${OPENSEARCH_IMAGE}

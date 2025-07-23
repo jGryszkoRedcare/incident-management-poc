@@ -1,0 +1,32 @@
+# The file ngrok.yml must be placed in ~/.config/ngrok/ngrok.yml or under windows in <USER_DIR>\.config\ngrok\ngrok.yml
+# Under Linux or MacOS, you can use the following command to create the directory and file (ngrok command must be installed): 
+# nohup ngrok start --config ${NGROK_LOG} --all > ${NGROK_LOG} 2>&1 &
+# The NGROK_AUTHTOKEN comes from an .env file or an environment variable.
+authtoken: ${NGROK_AUTHTOKEN}
+
+version: 2
+tunnels:
+  grafana:
+    proto: http
+    addr: 3000
+    domain: grafana.impoc.ngrok.app
+
+  prometheus:
+    proto: http
+    addr: 9090
+    domain: prometheus.impoc.ngrok.app
+
+  response-automation:
+    proto: http
+    addr: 5000
+    domain: response-automation.impoc.ngrok.app
+  
+  flagd-ui:
+    proto: http
+    addr: 4000
+    domain: flagd-ui.impoc.ngrok.app
+
+  frontend:
+    proto: http
+    addr: 8080
+    domain: frontend.impoc.ngrok.app

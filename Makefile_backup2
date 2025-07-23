@@ -12,12 +12,7 @@ MISSPELL_BINARY      := bin/misspell
 MISSPELL             := $(TOOLS_DIR)/$(MISSPELL_BINARY)
 
 DOCKER_COMPOSE_CMD   ?= docker compose
-
-DOCKER_COMPOSE_ENV = \
-  --env-file .env \
-  --env-file .env.override \
-  $(if $(ROUTER),--env-file .env_$(ROUTER))
-
+DOCKER_COMPOSE_ENV    = --env-file .env --env-file .env.override
 DOCKER_COMPOSE_BUILD_ARGS=
 
 # Ngrok defaults – override at CLI if you like
@@ -28,6 +23,8 @@ NGROK_LOG    ?= $(HOME)/ngrok.log
 TF_DIR_PAGERDUTY := ./terraform/pagerduty
 TF_DIR_SQUADCAST := ./terraform/squadcast
 
+ROUTER ?= pagerduty
+
 # Java Workaround for macOS 15.2+ and M4 chips
 ifeq ($(shell uname -m),arm64)
 	ifeq ($(shell uname -s),Darwin)
@@ -35,6 +32,23 @@ ifeq ($(shell uname -m),arm64)
 		DOCKER_COMPOSE_BUILD_ARGS += --build-arg=_JAVA_OPTIONS=-XX:UseSVE=0
 	endif
 endif
+
+ifeq ($(ROUTER),pagerduty)
+  ROUTER_ENV_FILE = .env_pagerduty
+  TF_DIR_CURRENT  = $(TF_DIR_PAGERDUTY)
+else ifeq ($(ROUTER),squadcast)
+  ROUTER_ENV_FILE = .env_squadcast
+  TF_DIR_CURRENT  = $(TF_DIR_SQUADCAST)
+else
+  $(error Unsupported ROUTER="$(ROUTER)")
+endif
+
+# Add router‑specific env‑file to docker compose invocation
+DOCKER_COMPOSE_ENV += --env-file $(ROUTER_ENV_FILE)
+
+# Test path helper
+PATH_TO_TESTS ?= /workspace/tests/$(ROUTER)
+
 
 ############################################################
 # House‑keeping helpers                                    #
@@ -56,7 +70,7 @@ define LOAD_ENV
 	set -a; \
 	[ -f .env ] && . ./.env; \
 	[ -f .env.override ] && . .env.override || true; \
-	[ -f .env_$(ROUTER) ] && . .env_$(ROUTER) || true; \
+	[ -f $(ROUTER_ENV_FILE) ] && . $(ROUTER_ENV_FILE) || true; \
 	set +a
 endef
 
@@ -66,7 +80,6 @@ endef
 
 .PHONY: start-core
 start-core:
-	@$(LOAD_ENV) && \
 	$(DOCKER_COMPOSE_CMD) $(DOCKER_COMPOSE_ENV) up --force-recreate --remove-orphans --detach
 	@echo "\nOpenTelemetry Demo is running.";
 	@echo "  Demo UI  → http://localhost:8080";
@@ -83,34 +96,22 @@ start-core:
 start: start-core
 
 ############################################################
-############################################################
 # Terraform helpers (per incident router)                  #
 ############################################################
 
-.PHONY: tf-apply-pagerduty tf-apply-squadcast tf-apply-router
+.PHONY: tf-apply-pagerduty tf-apply-squadcast
 
-# Core implementation: uses TF_DIR_CURRENT (set via ROUTER variable)
 tf-apply-router:
-	@$(LOAD_ENV) && terraform -chdir=$(TF_DIR_CURRENT) apply
-
-# Router‑specific wrappers
-
-tf-apply-pagerduty: ROUTER = pagerduty
-tf-apply-pagerduty: tf-apply-router
-
-tf-apply-squadcast: ROUTER = squadcast
-tf-apply-squadcast: tf-apply-router
+	@$(LOAD_ENV)
+	terraform -chdir=$(TF_DIR_CURRENT) apply
 
 ############################################################
-# High‑level “start & configure” aliases                   # “start & configure” aliases                   #
+# High‑level “start & configure” aliases                   #
 ############################################################
 
 .PHONY: start-pagerduty start-squadcast
-start-pagerduty:   ROUTER = pagerduty
-start-pagerduty:   start-core tf-apply-pagerduty
-
-start-squadcast:   ROUTER = squadcast
-start-squadcast:   start-core tf-apply-squadcast
+start-pagerduty: start-core tf-apply-pagerduty
+start-squadcast: start-core tf-apply-squadcast
 
 ############################################################
 # Stop / restart helpers                                   #
@@ -125,7 +126,6 @@ stop:
 
 .PHONY: restart redeploy
 restart:\nifdef SERVICE
-ifdef SERVICE
 	$(DOCKER_COMPOSE_CMD) $(DOCKER_COMPOSE_ENV) stop $(SERVICE)
 	$(DOCKER_COMPOSE_CMD) $(DOCKER_COMPOSE_ENV) rm --force $(SERVICE)
 	$(DOCKER_COMPOSE_CMD) $(DOCKER_COMPOSE_ENV) create $(SERVICE)
@@ -135,7 +135,6 @@ else
 endif
 
 redeploy:\nifdef SERVICE
-ifdef SERVICE
 	$(DOCKER_COMPOSE_CMD) $(DOCKER_COMPOSE_ENV) build $(DOCKER_COMPOSE_BUILD_ARGS) $(SERVICE)
 	$(DOCKER_COMPOSE_CMD) $(DOCKER_COMPOSE_ENV) stop $(SERVICE)
 	$(DOCKER_COMPOSE_CMD) $(DOCKER_COMPOSE_ENV) rm --force $(SERVICE)
@@ -144,32 +143,13 @@ ifdef SERVICE
 else
 	@echo "Please provide a service name using SERVICE=<service>"
 endif
-	
 
 ############################################################
-# Pytest suites inside the test‑runner container           #
+# Quick smoke‑test (local ports)                           #
 ############################################################
 
-define RUN_PYTEST
-	$(DOCKER_COMPOSE_CMD) $(DOCKER_COMPOSE_ENV) run --rm \
-	-e ROUTER \
-	-e PATH_TO_TESTS=/workspace/tests/$$ROUTER \
-	test-runner pytest $(1)
-endef
-
-
-# common router‑independent tests
-.PHONY: smoke-tests
-smoke-tests: start-core
-	@$(LOAD_ENV) && \
-	$(call RUN_PYTEST,/workspace/tests/smoke)
-
-.PHONY: basic-it
-basic-it: start-core
-	@$(LOAD_ENV) && \
-	$(call RUN_PYTEST,/workspace/tests/$$ROUTER/basic)
-
-.PHONY: advanced-it
-advanced-it: start-core
-	@$(LOAD_ENV) && \
-	$(call RUN_PYTEST,/workspace/tests/$$ROUTER/advanced)
+.PHONY: smoketest
+smoketest:
+	curl -fs http://localhost:3000  || echo "Grafana failed"
+	curl -fs http://localhost:9200  || echo "OpenSearch failed"
+	curl -fs http://localhost:9090  || echo "Prometheus failed"
