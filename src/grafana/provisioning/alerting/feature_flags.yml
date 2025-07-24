@@ -1,0 +1,189 @@
+# ---------------------------------------------------------------------------
+# Grafana unified‑alerting rules for the OpenTelemetry‑Demo feature flags
+# apiVersion 1 works on Grafana 9.0 +
+# ---------------------------------------------------------------------------
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: feature-flags                             # ← group name in UI
+    folder: Feature Flags                           # ← shows up in Alerting » Alert rules
+    interval: 15s                                   # evaluation frequency
+
+    rules:
+
+#############################################################################
+# Ad service flags
+#############################################################################
+      - uid: ad-failure
+        title: AdServiceFailure ‑ high error rate
+        condition: C
+        data:
+          - refId: A
+            expr: rate(grpc_server_handled_total{service="ad",grpc_code!="OK"}[1m])
+          - refId: B
+            expr: 0.1
+          - refId: C
+            expr: A > B
+        for: 30s
+        labels:
+          severity: critical
+          team: ShopStack
+        annotations:
+          summary: "ad service error rate > 0.1 req/s (flag adServiceFailure)"
+          runbook: https://github.com/open-telemetry/opentelemetry-demo
+          description: |
+            The feature flag **adServiceFailure** forces 1 in 10 requests to error.
+            Error‑rate threshold tripped for 30 s.
+
+      - uid: ad-gc
+        title: AdServiceManualGc ‑ long GC pauses
+        condition: C
+        data:
+          - refId: A
+            expr: rate(go_gc_duration_seconds_sum{service="ad"}[1m]) > 0.2
+          - refId: C
+            expr: A
+        for: 30s
+        labels:
+          severity: warning
+          team: ShopStack
+        annotations:
+          summary: "ad service GC time > 0.2 s/s (flag adServiceManualGc)"
+          description: "Manual GC flag causes long pauses."
+
+      - uid: ad-cpu
+        title: AdServiceHighCpu ‑ CPU throttling
+        condition: C
+        data:
+          - refId: A
+            expr: rate(container_cpu_usage_seconds_total{container="ad"}[1m]) > 0.8
+          - refId: C
+            expr: A
+        for: 30s
+        labels:
+          severity: warning
+          team: ShopStack
+        annotations:
+          summary: "ad service CPU > 80 % (flag adServiceHighCpu)"
+          description: "High‑CPU flag active; consider adding limits."
+
+#############################################################################
+# Cart & Product‑catalog
+#############################################################################
+      - uid: cart-failure
+        title: CartServiceFailure
+        condition: C
+        data:
+          - refId: A
+            expr: rate(grpc_server_handled_total{service="cart",grpc_code!="OK"}[1m]) > 0
+          - refId: C
+            expr: A
+        for: 30s
+        labels: {team: ShopStack, severity: critical}
+        annotations:
+          summary: "cart service returns errors (flag cartServiceFailure)"
+
+      - uid: pc-failure
+        title: ProductCatalogFailure
+        condition: C
+        data:
+          - refId: A
+            expr: rate(grpc_server_handled_total{service="product-catalog",grpc_code!="OK"}[1m]) > 0
+          - refId: C
+            expr: A
+        for: 30s
+        labels: {team: ShopStack, severity: critical}
+        annotations:
+          summary: "product‑catalog failure flag triggered"
+
+#############################################################################
+# Recommendation cache leak
+#############################################################################
+      - uid: rec-cache
+        title: RecommendationServiceCacheFailure
+        condition: C
+        data:
+          - refId: A
+            expr: container_memory_usage_bytes{container="recommendation"} > 400000000
+          - refId: C
+            expr: A
+        for: 2m
+        labels: {team: ShopStack, severity: warning}
+        annotations:
+          summary: "recommendation cache leak (flag recommendationServiceCacheFailure)"
+          description: "Memory > 400 MB for 2 min."
+
+#############################################################################
+# Kafka queue problems
+#############################################################################
+      - uid: kafka-lag
+        title: KafkaQueueProblems ‑ consumer lag spike
+        condition: C
+        data:
+          - refId: A
+            expr: kafka_consumergroup_lag{topic="orders"} > 1000
+          - refId: C
+            expr: A
+        for: 1m
+        labels: {team: InfraOps, severity: warning}
+        annotations:
+          summary: "Kafka consumer lag > 1000 (flag kafkaQueueProblems)"
+
+#############################################################################
+# Payment flags (special escalation test)
+#############################################################################
+      - uid: payment-failure
+        title: PaymentServiceFailure
+        condition: C
+        data:
+          - refId: A
+            expr: rate(grpc_server_handled_total{service="payment",grpc_code!="OK"}[1m]) > 0
+          - refId: C
+            expr: A
+        for: 30s
+        labels: {team: FinGuard, severity: critical}
+        annotations:
+          summary: "payment service errors (flag paymentServiceFailure)"
+
+      - uid: payment-unreach
+        title: PaymentServiceUnreachable
+        condition: C
+        data:
+          - refId: A
+            expr: rate(grpc_client_handled_total{grpc_service="paymentpb.PaymentService",grpc_code="Unavailable"}[1m]) > 0
+          - refId: C
+            expr: A
+        for: 30s
+        labels: {team: FinGuard, severity: critical}
+        annotations:
+          summary: "checkout cannot reach payment (flag paymentServiceUnreachable)"
+
+#############################################################################
+# Frontend / Loadgen flags
+#############################################################################
+      - uid: loadgen-flood
+        title: LoadgeneratorFloodHomepage
+        condition: C
+        data:
+          - refId: A
+            expr: rate(http_server_requests_total{service="frontend",route="/",status_code="200"}[30s]) > 100
+          - refId: C
+            expr: A
+        for: 30s
+        labels: {team: ShopStack, severity: warning}
+        annotations:
+          summary: "homepage RPS > 100 (flag loadgeneratorFloodHomepage)"
+
+      - uid: image-slow
+        title: ImageSlowLoad
+        condition: C
+        data:
+          - refId: A
+            expr: histogram_quantile(0.95, sum by(le) (rate(http_request_duration_seconds_bucket{service="frontend-proxy",route=~".*/images/.*"}[1m]))) > 5
+          - refId: C
+            expr: A
+        for: 30s
+        labels: {team: ShopStack, severity: warning}
+        annotations:
+          summary: "95th‑pct image load > 5 s (flag imageSlowLoad)"

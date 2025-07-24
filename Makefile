@@ -25,8 +25,11 @@ NGROK_CONFIG ?= $(HOME)/.config/ngrok/ngrok.yml
 NGROK_LOG    ?= $(HOME)/ngrok.log
 
 # Terraform sub‑projects (incident routers)
-TF_DIR_PAGERDUTY := ./terraform/pagerduty
-TF_DIR_SQUADCAST := ./terraform/squadcast
+PROJECT_ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+
+# 2. Terraform sub‑projects
+TF_DIR_PAGERDUTY := $(PROJECT_ROOT)terraform/pagerduty
+TF_DIR_SQUADCAST := $(PROJECT_ROOT)terraform/squadcast
 
 # Java Workaround for macOS 15.2+ and M4 chips
 ifeq ($(shell uname -m),arm64)
@@ -82,24 +85,46 @@ start-core:
 .PHONY: start
 start: start-core
 
+
 ############################################################
 ############################################################
 # Terraform helpers (per incident router)                  #
 ############################################################
 
 .PHONY: tf-apply-pagerduty tf-apply-squadcast tf-apply-router
-
-# Core implementation: uses TF_DIR_CURRENT (set via ROUTER variable)
 tf-apply-router:
-	@$(LOAD_ENV) && terraform -chdir=$(TF_DIR_CURRENT) apply
+	@if [ -z "$(ROUTER)" ]; then \
+		echo "ROUTER not set — use ROUTER=pagerduty or squadcast"; \
+		exit 1; \
+	fi
+	@$(LOAD_ENV) && terraform -chdir=$(TF_DIR_CURRENT) init &&  terraform -chdir=$(TF_DIR_CURRENT) apply
+
+.PHONY: tf-destroy-pagerduty tf-destroy-squadcast tf-destroy-router
+tf-destroy-router:
+	@if [ -z "$(ROUTER)" ]; then \
+		echo "ROUTER not set — use ROUTER=pagerduty or squadcast"; \
+		exit 1; \
+	fi
+	@$(LOAD_ENV) && terraform -chdir=$(TF_DIR_CURRENT) init &&  terraform -chdir=$(TF_DIR_CURRENT) destroy
 
 # Router‑specific wrappers
 
 tf-apply-pagerduty: ROUTER = pagerduty
+tf-apply-pagerduty: TF_DIR_CURRENT = $(TF_DIR_PAGERDUTY)
 tf-apply-pagerduty: tf-apply-router
 
 tf-apply-squadcast: ROUTER = squadcast
+tf-apply-squadcast: TF_DIR_CURRENT = $(TF_DIR_SQUADCAST)
 tf-apply-squadcast: tf-apply-router
+
+
+tf-destroy-pagerduty: ROUTER = pagerduty
+tf-destroy-pagerduty: TF_DIR_CURRENT = $(TF_DIR_PAGERDUTY)
+tf-destroy-pagerduty: tf-destroy-router
+
+tf-destroy-squadcast: ROUTER = squadcast
+tf-destroy-squadcast: TF_DIR_CURRENT = $(TF_DIR_SQUADCAST)
+tf-destroy-squadcast: tf-destroy-router
 
 ############################################################
 # High‑level “start & configure” aliases                   # “start & configure” aliases                   #
@@ -107,10 +132,34 @@ tf-apply-squadcast: tf-apply-router
 
 .PHONY: start-pagerduty start-squadcast
 start-pagerduty:   ROUTER = pagerduty
-start-pagerduty:   start-core tf-apply-pagerduty
+start-pagerduty:
+	$(MAKE) start-core ROUTER=$(ROUTER)
+	$(MAKE) tf-apply-pagerduty ROUTER=$(ROUTER)
 
 start-squadcast:   ROUTER = squadcast
-start-squadcast:   start-core tf-apply-squadcast
+start-squadcast:
+	$(MAKE) start-core ROUTER=$(ROUTER)
+	$(MAKE) tf-apply-squadcast ROUTER=$(ROUTER)
+
+.PHONY: destroy-pagerduty destroy-squadcast
+destroy-pagerduty:   ROUTER = pagerduty
+destroy-pagerduty:
+	$(MAKE) tf-destroy-pagerduty ROUTER=$(ROUTER)
+
+destroy-squadcast:   ROUTER = squadcast
+destroy-squadcast:
+	$(MAKE) tf-destroy-squadcast ROUTER=$(ROUTER)
+
+.PHONY: apply-terraform-only_pd pply-terraform-only_sc
+apply-terraform-only_pd:  ROUTER = pagerduty
+apply-terraform-only_pd: TF_DIR_CURRENT = $(TF_DIR_PAGERDUTY)
+apply-terraform-only_pd:
+	$(MAKE) tf-apply-router ROUTER=$(ROUTER)
+
+apply-terraform-only_sc:  ROUTER = squadcast
+apply-terraform-only_sc: TF_DIR_CURRENT = $(TF_DIR_SQUADCAST)
+apply-terraform-only_sc:
+	$(MAKE) tf-apply-router ROUTER=$(ROUTER)
 
 ############################################################
 # Stop / restart helpers                                   #

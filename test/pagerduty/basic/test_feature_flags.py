@@ -15,8 +15,8 @@ def test_ad_failure_triggers_oncall():
         # give the alert some breathing room (Prom scrape + Grafana rule eval)
         time.sleep(30)
 
-        assert wait_for_assignment_and_ack(team_id, "alice@example.com", 90) \
-            or wait_for_assignment_and_ack(team_id, "bob@example.com", 90), \
+        assert wait_for_assignment_and_ack(team_id, "janusz.gryszko@redcare-pharmacy.com", 90) \
+            or wait_for_assignment_and_ack(team_id, "daniel.krones@redcare-pharmacy.com", 90), \
             "No engineer acknowledged ad‑service failure"
 
 

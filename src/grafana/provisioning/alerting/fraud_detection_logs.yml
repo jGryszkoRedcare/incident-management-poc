@@ -1,0 +1,24 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: fraud‑logs
+    folder: Feature Flags
+    interval: 15s
+    rules:
+      - uid: fraud-detection-logs
+        title: FraudAttemptLog
+        condition: C
+        for: 30s
+        data:
+          - refId: A
+            datasourceUid: loki
+            queryType: logql
+            expr: '{container="fraud-detection"} |= "FRAUD_ATTEMPT"'   # 1
+          - refId: C
+            expr: A > 0                                                # 2
+        annotations:
+          summary: "Fraud attempt detected in logs"
+          description: "fraud‑detection emitted FRAUD_ATTEMPT"
+        labels:
+          severity: critical
+          team: payment

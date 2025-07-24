@@ -799,7 +799,7 @@ services:
       - ./src/grafana/grafana.ini:/etc/grafana/grafana.ini
       - ./src/grafana/provisioning/:/etc/grafana/provisioning/
     ports:
-      - "${GRAFANA_PORT}"
+      - "3000:3000" 
     logging: *logging
 
   # OpenTelemetry Collector
@@ -861,6 +861,37 @@ services:
     ports:
       - "${PROMETHEUS_PORT}:${PROMETHEUS_PORT}"
     logging: *logging
+
+  ################################################################################
+# Loki — log store (Grafana's default helm chart values, trimmed)
+################################################################################
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki
+    command: -config.file=/etc/loki/config.yaml
+    volumes:
+      - ./src/loki/local-config.yaml:/etc/loki/config.yaml
+    ports:
+      - "3100:3100"
+    deploy:
+      resources: {limits: {memory: 300M}}
+    logging: *logging        # reuse the logging block from demo
+
+################################################################################
+# Promtail — ships Docker container logs to Loki
+################################################################################
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: promtail
+    command: -config.file=/etc/promtail/promtail.yaml
+    volumes:
+      - ./src/promtail/promtail.yaml:/etc/promtail/promtail.yaml
+      - /var/run/docker.sock:/var/run/docker.sock   # read container logs
+    deploy:
+      resources: {limits: {memory: 100M}}
+    logging: *logging
+
+  
   
   # OpenSearch
   opensearch:
